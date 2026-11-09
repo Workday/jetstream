@@ -1,0 +1,14 @@
+# Production.
+environment: prod
+instance_name: eptura
+destination_catalog: raw_prod
+destination_schema: eptura
+secret_scope: jetstream_eptura
+api_base_path: /external/api/rest/v2
+redirect_uri: https://your-tenant.iofficeconnect.com/
+oauth_scope: email
+page_size: 1000
+sla_target_minutes: 1440
+owner_team: data-platform
+tombstone_guard_pct: 20
+enabled_objects: ""

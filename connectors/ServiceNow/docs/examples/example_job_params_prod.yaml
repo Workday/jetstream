@@ -1,0 +1,36 @@
+# Production job parameters.
+#
+# Control-plane rows land in:     metadata_prod.jetstream.*
+# Destination tables land in:     raw_prod.servicenow.<table>
+#
+# metadata_catalog and metadata_schema overrides are rejected when
+# environment=prod. Production uses metadata_prod.jetstream.
+
+environment: prod
+instance_name: servicenow
+metadata_catalog: metadata_prod
+metadata_schema: jetstream
+destination_catalog: raw_prod
+destination_schema: servicenow
+secret_scope: jetstream_servicenow
+owner_team: data-platform
+sla_target_minutes: "1440"
+
+attachment_volume_base: /Volumes/raw_prod/servicenow/attachments
+download_attachments: "true"
+page_size: "10000"
+lookback_minutes: "15"
+retry_max_attempts: "5"
+
+enabled_objects: incident
+sync_target: base
+primary_key: sys_id
+watermark_column: sys_updated_on
+attachment_meta_table: ""
+journals_meta_table: ""
+
+from_datetime: ""
+to_datetime: ""
+mode: run
+skip_bootstrap: "false"
+trigger_type: scheduled

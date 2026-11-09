@@ -1,0 +1,50 @@
+# PHASE 3 — Production.
+#
+# Control-plane rows land in:    metadata_prod.jetstream.*
+# Destination raw tables land in: raw_prod.zoom.<name>
+#
+# `metadata_schema` overrides are rejected in prod (enforced by
+# src.jetstream.ctx.resolve_metadata_catalog); prod always uses the
+# shared `jetstream` schema.
+
+# ---------------------------------------------------------------------
+# Platform routing
+# ---------------------------------------------------------------------
+environment: prod
+instance_name: zoom
+metadata_catalog: metadata_prod
+metadata_schema: jetstream
+destination_catalog: raw_prod
+destination_schema: zoom
+secret_scope: jetstream_zoom
+owner_team: data-platform
+sla_target_minutes: "1440"
+
+# ---------------------------------------------------------------------
+# Zoom API configuration
+# ---------------------------------------------------------------------
+zoom_base_url: "https://api.zoom.us/v2"
+zoom_token_url: "https://zoom.us/oauth/token"
+rate_limit_qps: "10"
+timeout_seconds: "60"
+retry_max_attempts: "5"
+
+# ---------------------------------------------------------------------
+# Object selection
+# ---------------------------------------------------------------------
+# When mode=run, the job syncs all objects listed in enabled_objects and
+# optional_objects_enabled. The 'objects' parameter is ignored.
+#
+# When mode=full_resync, the job runs a full resync of ONLY the tables
+# listed in 'objects', ignoring enabled_objects and optional_objects_enabled.
+enabled_objects: "users,groups,rooms,room_locations,room_devices"
+optional_objects_enabled: "dashboard_meetings,dashboard_meeting_participants"
+objects: ""                                  # used only with mode=full_resync
+
+# ---------------------------------------------------------------------
+# Execution control
+# ---------------------------------------------------------------------
+# mode=run          : normal incremental sync (uses enabled_objects + optional_objects_enabled)
+# mode=full_resync  : full reload of tables listed in 'objects' param only
+mode: run
+trigger_type: scheduled

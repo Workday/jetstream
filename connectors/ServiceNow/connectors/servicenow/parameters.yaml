@@ -1,0 +1,235 @@
+# Jetstream ServiceNow connector — parameter schema.
+#
+# Spec §7 "Parameter Specification Convention": this file is the single
+# source of truth for what the ServiceNow connector's source_config accepts.
+# At first run, this file is compiled into a JSON Schema and inserted as
+# metadata_<env>.jetstream.connector_manifest.config_schema.
+#
+# Per-instance values are set through Databricks Job UI parameters and
+# read via dbutils.widgets.getAll() — NOT stored anywhere in this repo.
+# See docs/examples/ for reference example parameter sets.
+
+parameters:
+  # ---------------------------------------------------------------------
+  # Platform routing
+  # ---------------------------------------------------------------------
+
+  - name: environment
+    type: string
+    required: true
+    enum: [dev, prod]
+    description: >-
+      Which Jetstream metadata catalog this instance reports to.
+      dev  -> metadata_dev
+      prod -> metadata_prod
+      Also written to connector_instance.environment.
+
+  - name: instance_name
+    type: string
+    required: true
+    description: >-
+      Human-readable name for this deployment, unique within the metadata
+      catalog. Example: servicenow.
+
+  - name: destination_catalog
+    type: string
+    required: true
+    description: Unity Catalog where raw ServiceNow tables are written (e.g. raw_dev, raw_prod).
+
+  - name: destination_schema
+    type: string
+    required: true
+    default: servicenow
+    description: Schema under destination_catalog, typically servicenow.
+
+  - name: metadata_catalog
+    type: string
+    required: false
+    default: ""
+    description: >-
+      Which catalog holds the Jetstream control-plane tables. Empty means the
+      spec default (metadata_dev for env=dev, metadata_prod
+      for env=prod). Override only in dev sandbox phase (e.g. raw_dev when
+      the shared metadata catalog is not yet provisioned). Overrides are rejected
+      in prod.
+
+  - name: metadata_schema
+    type: string
+    required: false
+    default: jetstream
+    description: >-
+      Which schema under metadata_catalog this instance reports to. Default
+      'jetstream' is the shared control-plane schema every prod-ready connector
+      uses. Developers iterating on a new connector type MUST override this to
+      'jetstream_servicenow' (or jetstream_<connector_type>) per spec §3.2, to keep
+      test/throwaway rows out of the shared schema. Overrides permitted only
+      when environment='dev'; the value must still start with 'jetstream'.
+
+  - name: sla_target_minutes
+    type: integer
+    required: false
+    default: 1440
+    description: Expected maximum minutes between successful runs; used by the connector_health view.
+
+  - name: owner_team
+    type: string
+    required: false
+    default: ""
+    description: Team that owns this instance (informational, written to connector_instance.owner_team).
+
+  # ---------------------------------------------------------------------
+  # ServiceNow OAuth — no credential values ever appear here, only refs
+  # ---------------------------------------------------------------------
+
+  - name: secret_scope
+    type: string
+    required: true
+    description: >-
+      Databricks secret scope that holds this instance's ServiceNow credentials.
+      Expected keys inside the scope:
+        servicenow-client-id, servicenow-client-secret,
+        servicenow-refresh-token, servicenow-base-url.
+      Values are NEVER written to the control plane — only the scope name.
+      servicenow-base-url is the instance origin, for example
+      https://example.service-now.com.
+
+  - name: attachment_volume_base
+    type: string
+    required: false
+    default: ""
+    description: >-
+      Unity Catalog volume path for attachment binaries. Empty defaults to
+      /Volumes/<destination_catalog>/<destination_schema>/attachments.
+
+  - name: download_attachments
+    type: boolean
+    required: false
+    default: true
+    description: >-
+      When sync_target=attachments, download binaries onto the volume.
+      Ignored when sync_target is base or journals.
+
+  # ---------------------------------------------------------------------
+  # Which table and which slice this task extracts
+  # ---------------------------------------------------------------------
+
+  - name: enabled_objects
+    type: string
+    required: false
+    default: incident
+    description: >-
+      ServiceNow Table API name for this task. One name per task.
+      Example: incident. A comma-separated list runs each name in the same task.
+
+  - name: primary_key
+    type: string
+    required: false
+    default: sys_id
+    description: >-
+      Parent-table primary key recorded on connector_table_registry.
+      A single column (sys_id, number) or a comma-separated composite
+      (sys_id,number). Empty defaults to sys_id. Attachment metadata always
+      uses sys_id.
+
+  - name: watermark_column
+    type: string
+    required: false
+    default: sys_updated_on
+    description: >-
+      Parent-table incremental column or columns. Empty defaults to
+      sys_updated_on. The attachment slice always uses sys_updated_on on
+      sys_attachment. The journal slice always uses sys_created_on on
+      sys_journal_field.
+
+  - name: sync_target
+    type: string
+    required: false
+    default: base
+    enum: [base, attachments, journals]
+    description: >-
+      Which slice this task extracts. base is the parent table,
+      attachments is sys_attachment plus optional binary download,
+      journals is sys_journal_field. Use the same enabled_objects value
+      on each task. Task keys must be unique; the run idempotency key is
+      {job_run_id}_{task_key}.
+
+  - name: attachment_meta_table
+    type: string
+    required: false
+    default: ""
+    description: >-
+      Iceberg table for attachment metadata when sync_target=attachments.
+      Empty defaults to {object}_attachments (for example incident_attachments).
+
+  - name: journals_meta_table
+    type: string
+    required: false
+    default: ""
+    description: >-
+      Iceberg table for sys_journal_field when sync_target=journals.
+      Empty defaults to {object}_journals (for example incident_journals).
+
+  - name: page_size
+    type: integer
+    required: false
+    default: 10000
+    description: Table API page size. Values above 10000 are capped at 10000.
+
+  - name: lookback_minutes
+    type: integer
+    required: false
+    default: 15
+    description: Minutes subtracted from the cursor before the incremental query.
+
+  - name: from_datetime
+    type: string
+    required: false
+    default: ""
+    description: >-
+      Ad hoc window start (ISO-8601 or YYYY-MM-DD HH:MM:SS). When set with
+      mode=run, the extract uses the watermark column greater than this value
+      and less than to_datetime. The cursor advances to the later of the
+      stored cursor and the batch maximum. Leave empty for a normal incremental
+      run or for full_resync.
+
+  - name: to_datetime
+    type: string
+    required: false
+    default: ""
+    description: >-
+      Ad hoc window end. Empty with from_datetime means now (UTC).
+      Ignored when from_datetime is empty or mode=full_resync.
+
+  - name: retry_max_attempts
+    type: integer
+    required: false
+    default: 5
+    description: >-
+      Max attempts for Table API calls and attachment downloads on HTTP 429
+      and 5xx. Retry-After is honored.
+
+  - name: mode
+    type: string
+    required: false
+    default: run
+    enum: [run, full_resync, retry_failed_downloads, bootstrap_only]
+    description: >-
+      run extracts incrementally, or an ad hoc window when from_datetime is set.
+      full_resync reads without a watermark filter.
+      retry_failed_downloads retries failed attachment binaries.
+      bootstrap_only registers the control-plane instance and does not extract.
+
+  - name: skip_bootstrap
+    type: boolean
+    required: false
+    default: false
+    description: >-
+      Set true on object tasks that depend on a bootstrap_only task so they
+      look up connector_instance instead of updating it.
+
+  - name: trigger_type
+    type: string
+    required: false
+    default: scheduled
+    enum: [scheduled, manual, api, backfill]
+    description: Stored on connector_run.trigger_type.

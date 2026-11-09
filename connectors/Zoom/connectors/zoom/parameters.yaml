@@ -1,0 +1,141 @@
+# Jetstream Zoom connector — parameter schema.
+#
+# Spec §7 "Parameter Specification Convention": this file is the single
+# source of truth for what the Zoom connector's source_config accepts.
+# At first run, this file is compiled into a JSON Schema and inserted as
+# metadata_<env>.jetstream.connector_manifest.config_schema.
+#
+# Per-instance values are set through Databricks Job UI parameters and
+# read via dbutils.widgets.getAll() — NOT stored anywhere in this repo.
+# See docs/examples/ for reference example parameter sets.
+
+parameters:
+  # ---------------------------------------------------------------------
+  # Platform routing
+  # ---------------------------------------------------------------------
+
+  - name: environment
+    type: string
+    required: true
+    enum: [dev, prod]
+    description: >-
+      Which Jetstream metadata catalog this instance reports to.
+      dev  -> metadata_dev
+      prod -> metadata_prod
+      Also written to connector_instance.environment.
+
+  - name: instance_name
+    type: string
+    required: true
+    description: >-
+      Human-readable name for this deployment, unique within the metadata
+      catalog. Example: zoom.
+
+  - name: destination_catalog
+    type: string
+    required: true
+    description: Unity Catalog where raw Zoom tables are written (e.g. raw_dev, raw_prod).
+
+  - name: destination_schema
+    type: string
+    required: true
+    description: Schema under destination_catalog, typically 'zoom' or a team-specific schema.
+
+  - name: metadata_catalog
+    type: string
+    required: false
+    default: ""
+    description: >-
+      Which catalog holds the Jetstream control-plane tables. Empty means the
+      spec default (metadata_dev for env=dev, metadata_prod
+      for env=prod). Override only in dev sandbox phase (e.g. raw_dev when
+      the shared metadata catalog is not yet provisioned). Overrides are rejected
+      in prod.
+
+  - name: metadata_schema
+    type: string
+    required: false
+    default: jetstream
+    description: >-
+      Which schema under metadata_catalog this instance reports to. Default
+      'jetstream' is the shared control-plane schema every prod-ready connector
+      uses. Developers iterating on a new connector type MUST override this to
+      'jetstream_zoom' (or jetstream_<connector_type>) per spec §3.2, to keep
+      test/throwaway rows out of the shared schema. Overrides permitted only
+      when environment='dev'; the value must still start with 'jetstream'.
+
+  - name: sla_target_minutes
+    type: integer
+    required: false
+    default: 1440
+    description: Expected maximum minutes between successful runs; used by the connector_health view.
+
+  - name: owner_team
+    type: string
+    required: false
+    default: ""
+    description: Team that owns this instance (informational, written to connector_instance.owner_team).
+
+  # ---------------------------------------------------------------------
+  # Zoom OAuth / API — no credential *values* ever appear here, only refs
+  # ---------------------------------------------------------------------
+
+  - name: secret_scope
+    type: string
+    required: true
+    description: >-
+      Databricks secret scope that holds this instance's Zoom credentials.
+      Expected keys inside the scope:
+        zoom_account_id, zoom_client_id, zoom_client_secret.
+      Values are NEVER written to the control plane — only the scope name.
+
+  - name: zoom_base_url
+    type: string
+    required: false
+    default: https://api.zoom.us/v2
+    description: Zoom API base URL. Change only for gov/isolated tenants.
+
+  - name: zoom_token_url
+    type: string
+    required: false
+    default: https://zoom.us/oauth/token
+    description: Zoom OAuth token endpoint.
+
+  - name: rate_limit_qps
+    type: number
+    required: false
+    default: 10
+    description: Max requests/second client-side throttle for the Zoom API.
+
+  - name: timeout_seconds
+    type: integer
+    required: false
+    default: 60
+    description: Per-HTTP-request timeout in seconds.
+
+  - name: retry_max_attempts
+    type: integer
+    required: false
+    default: 5
+    description: Max retries on 429/5xx before failing the request.
+
+  # ---------------------------------------------------------------------
+  # Which objects to sync (subset of the catalog in src/objects.py)
+  # ---------------------------------------------------------------------
+
+  - name: enabled_objects
+    type: string
+    required: false
+    default: ""
+    description: >-
+      Comma-separated list of primary-tier object names to sync. Empty
+      means "all primary objects defined in src/objects.py". Must be a
+      subset of that catalog.
+
+  - name: optional_objects_enabled
+    type: string
+    required: false
+    default: ""
+    description: >-
+      Comma-separated list of optional (Heavy-tier Dashboard) objects to
+      attempt. Empty means "no optional objects".

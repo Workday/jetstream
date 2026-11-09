@@ -1,0 +1,39 @@
+# Sandbox job parameters.
+#
+# Use while the shared metadata catalog is not available.
+# metadata_catalog points at a catalog you control.
+# metadata_schema is the connector-specific sandbox schema.
+#
+# Prerequisites:
+#   1. Run sql/control_plane.reference.sql with the catalog and schema
+#      replaced by raw_dev.jetstream_servicenow.
+#   2. Create schema raw_dev.servicenow and volume raw_dev.servicenow.attachments
+#      (see sql/provision_raw_dev.sql).
+#   3. Create secret scope jetstream_servicenow and store the four ServiceNow keys.
+
+environment: dev
+instance_name: servicenow_sandbox
+metadata_catalog: raw_dev
+metadata_schema: jetstream_servicenow
+destination_catalog: raw_dev
+destination_schema: servicenow
+secret_scope: jetstream_servicenow
+owner_team: data-platform
+sla_target_minutes: "1440"
+
+attachment_volume_base: /Volumes/raw_dev/servicenow/attachments
+download_attachments: "true"
+page_size: "1000"
+lookback_minutes: "15"
+retry_max_attempts: "5"
+
+enabled_objects: incident
+sync_target: base
+primary_key: sys_id
+watermark_column: sys_updated_on
+
+from_datetime: ""
+to_datetime: ""
+mode: run
+skip_bootstrap: "false"
+trigger_type: manual

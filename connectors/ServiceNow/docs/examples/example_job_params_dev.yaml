@@ -1,0 +1,38 @@
+# Dev job parameters.
+#
+# Control-plane rows land in:     metadata_dev.jetstream_servicenow.*
+# Destination tables land in:     raw_dev.servicenow.<table>
+# Attachment files land in:       /Volumes/raw_dev/servicenow/attachments/
+#
+# When this path is tested end to end, switch to example_job_params_prod.yaml.
+
+environment: dev
+instance_name: servicenow
+metadata_catalog: metadata_dev
+metadata_schema: jetstream_servicenow
+destination_catalog: raw_dev
+destination_schema: servicenow
+secret_scope: jetstream_servicenow
+owner_team: data-platform
+sla_target_minutes: "1440"
+
+attachment_volume_base: /Volumes/raw_dev/servicenow/attachments
+download_attachments: "true"
+page_size: "10000"
+lookback_minutes: "15"
+retry_max_attempts: "5"
+
+# One table per task. See example_job_multi_task.yaml for base,
+# attachments, and journals as separate tasks.
+enabled_objects: incident
+sync_target: base
+primary_key: sys_id
+watermark_column: sys_updated_on
+attachment_meta_table: ""
+journals_meta_table: ""
+
+from_datetime: ""
+to_datetime: ""
+mode: run
+skip_bootstrap: "false"
+trigger_type: scheduled

@@ -1,0 +1,33 @@
+# Dev job parameters.
+#
+# Control-plane rows land in:     metadata_dev.jetstream_wss.*
+# Destination tables land in:     raw_dev.wss.<object>
+# API responses land in:          /Volumes/raw_dev/wss/api_responses/
+# Attachment files land in:       /Volumes/raw_dev/wss/attachments/
+
+environment: dev
+instance_name: wss
+metadata_catalog: metadata_dev
+metadata_schema: jetstream_wss
+destination_catalog: raw_dev
+destination_schema: wss
+secret_scope: jetstream_wss
+owner_team: data-platform
+sla_target_minutes: "1440"
+is_sandbox: "false"
+
+attachment_volume_base: /Volumes/raw_dev/wss/attachments
+raw_json_volume_base: /Volumes/raw_dev/wss/api_responses
+download_attachments: "true"
+page_size: "100"
+lookback_minutes: "30"
+retry_max_attempts: "5"
+
+enabled_objects: contracts,projects,events
+primary_key: id
+watermark_column: updated_at
+
+from_datetime: ""
+to_datetime: ""
+mode: run
+trigger_type: scheduled

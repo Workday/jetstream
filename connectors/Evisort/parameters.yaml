@@ -1,0 +1,398 @@
+# Jetstream Evisort Connector: Parameter Specification
+#
+# This file is the single source of truth for what source_config accepts for
+# connector_type_id: evisort. It is compiled into the config_schema stored in
+# connector_manifest at registration time. Do not hand-write the JSON Schema
+# directly; derive it from this file.
+#
+# Every parameter declared here maps to a Databricks Job task parameter of the
+# same name. At registration, the connector splits these into source_config
+# (connection, discovery, write) and the destination fields (target_catalog,
+# target_schema, table_name) which are stored as top-level columns on
+# connector_instance rather than inside source_config.
+#
+# depends_on: a parameter is only required, and only valid, when the referenced
+# parameter's value matches the given value.
+
+connector_type_id: evisort
+manifest_version: "1.0.0"
+
+parameters:
+
+  # ---------------------------------------------------------------------------
+  # Destination (stored as top-level columns on connector_instance, not in
+  # source_config)
+  # ---------------------------------------------------------------------------
+
+  - name: target_catalog
+    type: string
+    required: true
+    description: >
+      Unity Catalog catalog where the destination table is created. Must
+      already exist; this connector does not create catalogs.
+
+  - name: target_schema
+    type: string
+    required: true
+    description: >
+      Schema within target_catalog where the destination table is created.
+      Created automatically (CREATE SCHEMA IF NOT EXISTS) on every run if
+      it doesn't already exist; the job's service principal needs CREATE
+      SCHEMA privilege on target_catalog.
+
+  - name: sync_objects
+    type: string
+    required: false
+    default: documents
+    description: >
+      Comma-separated list of Evisort objects to sync this run, matching
+      keys registered in EVISORT_OBJECTS (evisort_objects.py):
+      "documents" (Documents API), "groups" (Managed Entities API),
+      "tickets" (Workflow API), "nodes" (Managed Entities API,
+      resource-to-group associations), "departments" (Admin API),
+      "workflows" (Workflow API), and "activities" (Workflow API, scoped
+      to ticket-activities only) are registered and usable today. An
+      unregistered name fails validation. "nodes" and "activities" do not
+      require "groups"/"tickets" to also be selected -- each internally
+      discovers the real IDs it needs itself (fetch_all_group_ids()/
+      fetch_all_ticket_ids() in evisort_connector.py) and is otherwise
+      fully independent. Not yet registered: auditlog (AuditLogs API --
+      real base URL and path confirmed, but a real call to that host's own
+      token endpoint 404s -- likely a tenant enrollment/access question,
+      not fixable in code) and users (Admin API -- confirmed real XLSX
+      export, but the docs' own example response contradicts that; needs
+      the real file parsed with openpyxl to settle it). "departments" is
+      built and registered but a real call currently 404s -- also likely a
+      tenant access question, ready the moment that resolves.
+
+  - name: table_name
+    type: string
+    required: false
+    default: ""
+    description: >
+      Destination table name for the "documents" object specifically. No
+      default, required whenever "documents" is listed in sync_objects
+      (validated in code, not expressible via depends_on since that
+      requires equality against a single value, not list-membership).
+      Ignored, and not required, if "documents" is not in sync_objects.
+      One row per document, keyed on evisort_id. Any other object listed
+      in sync_objects uses its own fixed default table name (see its
+      EvisortObject.default_table_name in evisort_connector.py) rather
+      than a configurable override, not exposed as a parameter yet since
+      there's no concrete need for a per-instance override until a second
+      object actually exists.
+
+  - name: columns
+    type: string
+    required: false
+    default: ""
+    description: >
+      Comma-separated list of the EXACT Evisort FIELD names (verbatim, as
+      they appear in this tenant's document.fields[], e.g. "Title",
+      "Total Amount", "Counterparties", or any custom field this tenant
+      happens to have) to include in this instance's documents table.
+      There is no fixed catalog to choose from; this connector does not
+      hardcode which fields exist; it looks up exactly the names given
+      here and pulls whatever Evisort actually returns for a given
+      document (NULL if that name isn't present on a particular
+      document). At least one of 'columns' or 'clauses' is required
+      whenever "documents" is listed in sync_objects; both are ignored,
+      and neither is required, otherwise. Each destination column is
+      typed ARRAY<STRING>: a field's values[] is genuinely a list even
+      when it holds one value, and this connector does not collapse it
+      into a delimited string (an earlier version did; that was lossy
+      whenever a real value itself contained the delimiter). Each name is
+      converted to a destination column via sanitize_column_name()
+      (lowercased, non-alphanumeric runs collapsed to "_"), e.g.
+      "Total Amount" -> total_amount. Validation rejects an entry that
+      sanitizes to an empty name, and rejects any entry (in 'columns' or
+      'clauses') that collides on the same sanitized name as another
+      entry in either list, but does not and cannot validate that a name
+      actually exists in Evisort, since there is nothing to check it
+      against. evisort_id and the other document-identity/surrogate
+      columns (see DOCUMENTS_IDENTITY_COLUMNS/DOCUMENTS_SURROGATE_COLUMNS
+      in evisort_connector.py) are always included regardless of this list
+      and should not be listed here. Example: "Title,Counterparties,Total Amount".
+
+  - name: clauses
+    type: string
+    required: false
+    default: ""
+    description: >
+      Comma-separated list of the EXACT Evisort CLAUSE/provision names
+      (verbatim, as Evisort's clause library defines them, e.g.
+      "Force Majeure", "Confidentiality", "Termination for Convenience")
+      to include in this instance's documents table. Looked up in
+      document.provisions[], not document.fields[]; a name listed here
+      that's actually a field (or vice versa in 'columns') simply resolves
+      to NULL, since each parameter only ever looks in its own list. At
+      least one of 'columns' or 'clauses' is required whenever "documents"
+      is listed in sync_objects; both are ignored, and neither is
+      required, otherwise. Each destination column is typed STRING (a
+      clause's extracted text snippets joined with " | " and truncated to
+      8,000 characters); unlike 'columns', which is always ARRAY<STRING>,
+      since a clause is one block of extracted text, not discrete values.
+      Same sanitize_column_name() naming and cross-list collision
+      validation as 'columns'; see that parameter's description. Example:
+      "Force Majeure,Confidentiality,Indemnification".
+
+  - name: table_group_name
+    type: string
+    required: false
+    default: ""
+    description: >
+      Optional logical grouping label for this table, used for display and
+      filtering in the control plane. Has no effect on data or routing.
+
+  # ---------------------------------------------------------------------------
+  # Authentication
+  # ---------------------------------------------------------------------------
+
+  - name: api_base_url
+    type: string
+    required: false
+    default: https://api.evisort.com/v1
+    description: >
+      Base URL of the Evisort API. Overridable for sandbox/test tenants.
+      Applies to every object whose EvisortObject.api_base_url_override is
+      unset (documents, tickets). "groups" lives at a structurally
+      different host path (api.evisort.com/mes/public) and always uses
+      its own override regardless of this parameter; Managed Entities'
+      EU/US/Demo regional base URLs aren't exposed as separate config yet.
+
+  - name: secret_scope
+    type: string
+    required: true
+    description: >
+      Databricks secret scope holding the Evisort API key. This is a
+      reference to where the credential lives, not the credential value
+      itself; the platform control plane never stores a credential value
+      (see Jetstream Control Plane and Data Standards, section 3.5).
+
+  - name: secret_key_name
+    type: string
+    required: false
+    default: evisort-api-key
+    description: >
+      Key name within secret_scope holding the Evisort API key
+      (evisort-api-key header value used to exchange for a bearer token).
+
+  # ---------------------------------------------------------------------------
+  # Discovery / filtering
+  # ---------------------------------------------------------------------------
+
+  - name: page_size
+    type: integer
+    required: false
+    default: "100"
+    description: >
+      Number of records requested per page, shared across every object in
+      sync_objects; there is no per-object override yet. Each object's
+      own pagination mechanics (a `next` URL, an offset, or a page number)
+      are handled by its own build_request()/get_next_marker() pair in
+      evisort_connector.py, but the requested page size itself is uniform.
+      Note the real Documents API caps pageSize at 200; Managed Entities
+      caps page[limit] at 1000; this connector does not yet clamp
+      page_size per object, so a value above 200 would only misbehave
+      against the documents object specifically.
+
+  - name: modified_since_override
+    type: string
+    required: false
+    default: ""
+    description: >
+      Explicit ISO date (YYYY-MM-DD) to use as the incremental cursor for
+      every object that supports one, overriding the stored
+      connector_state cursor. Intended for a one-time initial backfill
+      start date. Only "documents" currently supports incremental
+      filtering (EvisortObject.cursor_field is set); "groups" and
+      "tickets" have no documented modified-since-style filter in their
+      APIs, so this override has no effect on them; every run fetches
+      all of their records regardless (the write is still a safe,
+      idempotent MERGE). Empty string uses the stored cursor, or, for a
+      brand new documents instance with no stored cursor yet, the epoch
+      fallback (1970-01-01), since Evisort's real API requires
+      modifiedSince on every call rather than treating it as optional.
+
+  # ---------------------------------------------------------------------------
+  # Write / schema
+  # ---------------------------------------------------------------------------
+
+  - name: enable_schema_evolution
+    type: boolean
+    required: false
+    default: "true"
+    description: >
+      Set to true to allow the destination table schema to evolve
+      automatically when a new field is added to columns/clauses (ALTER
+      TABLE ADD COLUMNS). Set to false to fail the run on schema drift.
+
+  - name: on_error
+    type: string
+    required: false
+    default: fail
+    enum: [fail, skip]
+    description: >
+      Per-record error handling strategy applied while flattening any
+      object's record into a row, shared across every object in
+      sync_objects.
+      fail: the first malformed record stops the entire run.
+      skip: a malformed record is dropped from this run (logged as a
+        WARNING) and the run continues with the remaining records. Only
+        covers per-record flattening errors within an already-fetched
+        page; a page that cannot be fetched at all always stops the run
+        regardless of this setting.
+
+  # ---------------------------------------------------------------------------
+  # Control plane
+  # ---------------------------------------------------------------------------
+
+  - name: control_plane_catalog
+    type: string
+    required: false
+    default: udl_dataflow_metadata_prod
+    description: >
+      Unity Catalog catalog where the Jetstream control plane schema lives.
+      Set this to the catalog in which you ran
+      control_plane_standards/provision_jetstream_schema.py. Use a separate
+      non-production catalog for development or testing.
+
+  - name: control_plane_schema_override
+    type: string
+    required: false
+    default: ""
+    description: >
+      Optional. Schema name within control_plane_catalog to use instead of
+      the default "jetstream" schema, for example to keep a test instance's
+      control plane rows separate from the shared schema. Leave blank to
+      use the default. Must start with "jetstream_" when set; the literal
+      value "jetstream" is rejected because it is redundant with the
+      default.
+
+  - name: databricks_job_id
+    type: string
+    required: false
+    default: ""
+    description: >
+      Manual override ONLY. In the normal case, leave this blank --
+      databricks_job_id is discovered automatically at runtime via
+      dbruntime.databricks_repl_context, per the Jetstream standard's Instance
+      Bootstrapping section ("Databricks' own stable identity for the
+      job... Nobody sets it"). No job parameter setup is required for
+      this to work. Only set this if automatic discovery genuinely fails
+      for your task type (rare); if you do set it, use the resolved
+      value of the dynamic value reference "{{job.id}}", not a
+      hand-typed ID.
+
+  - name: databricks_job_run_id
+    type: string
+    required: false
+    default: ""
+    description: >
+      Manual override ONLY, matching databricks_job_id's description --
+      leave blank in the normal case; discovered automatically. Used as
+      the connector_run.idempotency_key fallback source and stored on
+      connector_run for traceability.
+
+  - name: databricks_workspace_id
+    type: string
+    required: false
+    default: ""
+    description: >
+      Manual override ONLY, matching databricks_job_id's description --
+      leave blank in the normal case; discovered automatically. Stored on
+      connector_run for traceability.
+
+  - name: environment
+    type: string
+    required: false
+    default: prod
+    enum: [dev, staging, prod]
+    description: >
+      Sub-environment label stored on the connector_instance row.
+
+  - name: owner_team
+    type: string
+    required: false
+    default: ""
+    description: >
+      Team responsible for this connector instance. Stored on
+      connector_instance and used for ownership tracking and alerting.
+
+  - name: sla_target_minutes
+    type: integer
+    required: false
+    default: "1440"
+    description: >
+      Maximum expected minutes between successful runs. Used by the
+      connector_health view to compute is_stale. Defaults to 1440 (24
+      hours), a reasonable baseline for a daily-cadence connector; set to
+      0 to disable staleness alerting for this instance, or override with
+      a tighter value for a more frequently-scheduled instance.
+
+  # ---------------------------------------------------------------------------
+  # Runtime control
+  # ---------------------------------------------------------------------------
+
+  - name: dry_run
+    type: boolean
+    required: false
+    default: "false"
+    description: >
+      Set to true to skip all data and state writes for every object in
+      sync_objects. Fetches and prints a preview of up to
+      preview_documents_count records per object with their flattened
+      field values, so field-mapping issues are visible before a real
+      run commits data.
+
+  - name: force_full_refresh
+    type: boolean
+    required: false
+    default: "false"
+    description: >
+      Set to true to ignore the stored connector_state cursor and refetch
+      everything, for every object in sync_objects that supports
+      incremental filtering (only "documents" today, see
+      modified_since_override). Recorded as run_type=full_resync in
+      connector_run.
+
+  - name: run_connection_test
+    type: boolean
+    required: false
+    default: "true"
+    description: >
+      Set to false to skip the lightweight one-record fetch (via each
+      object's own build_request()) that verifies auth and connectivity
+      against every object in sync_objects before the real sync begins.
+
+  - name: preview_documents_count
+    type: integer
+    required: false
+    default: "5"
+    description: >
+      When dry_run=true, the number of records to print per object in
+      sync_objects, including their flattened field values.
+
+  - name: batch_size
+    type: integer
+    required: false
+    default: ""
+    description: >
+      Maximum number of records processed per object per run, across all
+      pages. No default -- leave blank for no limit (fetches every
+      record matching the current cursor/filter in one run). Set an
+      explicit positive integer only if you deliberately want to cap a
+      single run's size, e.g. for predictability on a very large tenant.
+      Applies independently to each object in sync_objects -- syncing 3
+      objects with batch_size=500 means up to 500 records each, not 500
+      total. Ignored entirely (treated as unlimited) when
+      force_full_refresh=true, regardless of what this is set to --
+      that flag always fetches every record, matching its own documented
+      promise to "refetch everything." No longer a safety-critical
+      setting now that token expiry mid-run is handled automatically
+      (see BearerTokenHolder in evisort_connector.py) -- an unbounded run
+      is no longer a real risk, just a longer one. Check the real total
+      record count first via a dry_run=true run -- the log prints the
+      source API's own total on the first page fetched -- if you want to
+      gauge how long an unbounded run might take before deciding whether
+      to set a cap at all.

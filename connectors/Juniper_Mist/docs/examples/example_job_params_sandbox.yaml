@@ -1,0 +1,47 @@
+# Example Databricks Job parameters — Sandbox phase (spec §3.2)
+#
+# Use during initial connector development / testing before the shared
+# Jetstream metadata catalog is available in your workspace.
+# 
+# Key differences from dev/prod:
+#   - metadata_catalog points to a catalog you control (raw_dev)
+#   - metadata_schema is the connector-specific sandbox schema
+#
+# Prerequisites:
+#   1. Run sql/control_plane_reference.sql in raw_dev.jetstream_juniper_mist
+#   2. Create secret scope: databricks secrets create-scope jetstream_juniper_mist
+#   3. Add token: databricks secrets put-secret jetstream_juniper_mist juniper_mist_token --string-value "<api token>"
+
+parameters:
+  # Platform routing
+  environment: dev
+  instance_name: juniper_mist_sandbox
+  destination_catalog: raw_dev
+  destination_schema: juniper_mist
+  metadata_catalog: raw_dev
+  metadata_schema: jetstream_juniper_mist    # sandbox isolation
+
+  # Auth + org
+  secret_scope: jetstream_juniper_mist
+  juniper_mist_org_id: "<your-org-uuid>"
+  juniper_mist_base_url: "https://api.mist.com/api/v1"
+
+  # SLA / ownership
+  sla_target_minutes: "1440"
+  owner_team: data-eng
+
+  # HTTP
+  rate_limit_qps: "3"
+  timeout_seconds: "60"
+  retry_max_attempts: "5"
+
+  # Source
+  lookback_days: "7"
+  fan_out_max_workers: "4"
+  site_filter: ""           # empty = all sites for history fan-out
+  enabled_objects: ""       # empty = all 14 primary objects
+
+  # Per-run (trigger-time)
+  mode: run
+  objects: ""
+  # trigger_type is auto-detected: PERIODIC→scheduled, ONE_TIME→api, MANUAL→manual

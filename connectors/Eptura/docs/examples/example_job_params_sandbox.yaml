@@ -1,0 +1,17 @@
+# Sandbox phase — isolated control plane, shared dev destination.
+environment: dev
+# Omitted so it resolves to metadata_dev, where every connector's
+# control plane lives. Only the schema is isolated.
+metadata_schema: jetstream_eptura
+instance_name: eptura_sandbox
+destination_catalog: raw_dev
+destination_schema: eptura
+secret_scope: jetstream_eptura
+api_base_path: /external/api/rest/v2
+redirect_uri: https://your-tenant.iofficeconnect.com/
+oauth_scope: email
+page_size: 1000
+sla_target_minutes: 1440
+owner_team: data-platform
+tombstone_guard_pct: 20
+enabled_objects: rooms,users

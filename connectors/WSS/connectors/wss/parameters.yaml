@@ -1,0 +1,186 @@
+# Jetstream WSS connector — parameter schema.
+#
+# Spec §7 "Parameter Specification Convention": this file is the single
+# source of truth for what this connector's source_config accepts.
+# At first run, this file is compiled into a JSON Schema and inserted as
+# metadata_<env>.jetstream.connector_manifest.config_schema.
+#
+# Per-instance values are set through Databricks Job UI parameters and
+# read via dbutils.widgets.getAll(). Credential values are never stored here.
+# See docs/examples/ for reference example parameter sets.
+
+parameters:
+  - name: environment
+    type: string
+    required: true
+    enum: [dev, prod]
+    description: >-
+      Which Jetstream metadata catalog this instance reports to.
+      dev  -> metadata_dev
+      prod -> metadata_prod
+      Also written to connector_instance.environment.
+
+  - name: instance_name
+    type: string
+    required: true
+    description: >-
+      Human-readable name for this deployment, unique within the metadata
+      catalog. Example: wss.
+
+  - name: destination_catalog
+    type: string
+    required: true
+    description: Unity Catalog where raw WSS tables are written (e.g. raw_dev, raw_prod).
+
+  - name: destination_schema
+    type: string
+    required: true
+    default: wss
+    description: Schema under destination_catalog.
+
+  - name: metadata_catalog
+    type: string
+    required: false
+    default: ""
+    description: >-
+      Catalog that holds the Jetstream control-plane tables. Empty means
+      metadata_dev when environment=dev and metadata_prod when environment=prod.
+      Override only in dev. Production rejects any other catalog.
+
+  - name: metadata_schema
+    type: string
+    required: false
+    default: jetstream
+    description: >-
+      Schema under metadata_catalog. Default jetstream is the shared schema.
+      A dev sandbox may use jetstream_wss. Production must use jetstream.
+      The value must start with jetstream.
+
+  - name: sla_target_minutes
+    type: integer
+    required: false
+    default: 1440
+    description: Expected maximum minutes between successful runs; used by connector_health.
+
+  - name: owner_team
+    type: string
+    required: false
+    default: ""
+    description: Team that owns this instance. Written to connector_instance.owner_team.
+
+  - name: is_sandbox
+    type: boolean
+    required: false
+    default: false
+    description: Stored on the run configuration. The API host stays https://api.us.workdayspend.com.
+
+  - name: secret_scope
+    type: string
+    required: true
+    description: >-
+      Databricks secret scope for this instance. Expected keys:
+      wss_api_key, wss_user_token, wss_user_email.
+      Aliases wss-api-key, wss-user-token, and wss-user-email are also read.
+      Values are never written to the control plane.
+
+  - name: attachment_volume_base
+    type: string
+    required: false
+    default: ""
+    description: >-
+      Unity Catalog volume path for attachment binaries. Empty defaults to
+      /Volumes/<destination_catalog>/<destination_schema>/attachments.
+
+  - name: raw_json_volume_base
+    type: string
+    required: false
+    default: ""
+    description: >-
+      Unity Catalog volume path for API response backups. Empty defaults to
+      /Volumes/<destination_catalog>/<destination_schema>/api_responses.
+
+  - name: download_attachments
+    type: boolean
+    required: false
+    default: true
+    description: Download attachment binaries when the object declares has_attachments.
+
+  - name: enabled_objects
+    type: string
+    required: false
+    default: ""
+    description: >-
+      Comma-separated object names from connectors/wss/api_catalog.yaml.
+      Empty or all syncs every object in that catalog. Example: contracts,projects.
+
+  - name: primary_key
+    type: string
+    required: false
+    default: id
+    description: Primary key recorded for destination tables. The catalog value wins per object.
+
+  - name: watermark_column
+    type: string
+    required: false
+    default: updated_at
+    description: Incremental column hint. Incremental objects store a cursor in connector_state.
+
+  - name: attachment_enabled
+    type: boolean
+    required: false
+    default: false
+    description: Reserved widget. Attachment download follows download_attachments and the object catalog.
+
+  - name: attachment_meta_table
+    type: string
+    required: false
+    default: attachments
+    description: Attachment metadata table name.
+
+  - name: page_size
+    type: integer
+    required: false
+    default: 100
+    description: API page size.
+
+  - name: lookback_minutes
+    type: integer
+    required: false
+    default: 30
+    description: Minutes subtracted from an incremental cursor before the next request.
+
+  - name: from_datetime
+    type: string
+    required: false
+    default: ""
+    description: Optional window start (ISO-8601 or YYYY-MM-DD HH:MM:SS).
+
+  - name: to_datetime
+    type: string
+    required: false
+    default: ""
+    description: Optional window end. Empty means no explicit end.
+
+  - name: retry_max_attempts
+    type: integer
+    required: false
+    default: 5
+    description: Guidance for HTTP retries. The client also backs off on 429 and 5xx.
+
+  - name: mode
+    type: string
+    required: false
+    default: run
+    enum: [run, full_resync, retry_failed_downloads, bootstrap_only]
+    description: >-
+      run syncs enabled_objects.
+      full_resync reloads them without using the stored cursor.
+      bootstrap_only registers the control-plane instance and does not extract.
+      retry_failed_downloads is accepted by the job parameter list.
+
+  - name: trigger_type
+    type: string
+    required: false
+    default: scheduled
+    enum: [scheduled, manual, api, backfill]
+    description: Stored on connector_run.trigger_type.

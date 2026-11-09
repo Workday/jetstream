@@ -1,0 +1,32 @@
+# Sandbox job parameters.
+#
+# metadata_catalog points at a catalog you control.
+# metadata_schema is the connector-specific sandbox schema.
+#
+# Prerequisites:
+#   1. Run sql/control_plane.reference.sql with the catalog and schema
+#      replaced by raw_dev.jetstream_wss.
+#   2. Create schema raw_dev.wss and the two volumes in sql/provision_raw_dev.sql.
+#   3. Create secret scope jetstream_wss and store the three WSS keys.
+
+environment: dev
+instance_name: wss_sandbox
+metadata_catalog: raw_dev
+metadata_schema: jetstream_wss
+destination_catalog: raw_dev
+destination_schema: wss
+secret_scope: jetstream_wss
+owner_team: data-platform
+sla_target_minutes: "1440"
+is_sandbox: "true"
+
+attachment_volume_base: /Volumes/raw_dev/wss/attachments
+raw_json_volume_base: /Volumes/raw_dev/wss/api_responses
+download_attachments: "false"
+page_size: "50"
+lookback_minutes: "30"
+retry_max_attempts: "5"
+
+enabled_objects: contract_types,project_types
+mode: run
+trigger_type: manual

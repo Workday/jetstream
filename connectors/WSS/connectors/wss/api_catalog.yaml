@@ -1,0 +1,266 @@
+# --- REST Domain Endpoints (Pattern 3) ---
+contracts:
+  endpoint: "/services/contracts/v1/contracts"
+  api_type: INCR
+  auth_pattern: pattern_3
+  primary_key: id
+  has_attachments: true
+
+contract_types:
+  endpoint: "/services/contracts/v1/contract_types"
+  api_type: FULL
+  auth_pattern: pattern_3
+  primary_key: id
+
+projects:
+  endpoint: "/services/projects/v1/projects"
+  api_type: INCR
+  auth_pattern: pattern_3
+  primary_key: id
+  has_attachments: true
+
+project_types:
+  endpoint: "/services/projects/v1/project_types"
+  api_type: FULL
+  auth_pattern: pattern_3
+  primary_key: id
+
+payment_types:
+  endpoint: "/services/payments/v1/payment_types"
+  api_type: FULL
+  auth_pattern: pattern_3
+  primary_key: id
+
+payment_currencies:
+  endpoint: "/services/payments/v1/payment_currencies"
+  api_type: FULL
+  auth_pattern: pattern_3
+  primary_key: id
+
+payment_terms:
+  endpoint: "/services/payments/v1/payment_terms"
+  api_type: FULL
+  auth_pattern: pattern_3
+  primary_key: id
+
+events:
+  endpoint: "/services/events/v1/events"
+  api_type: INCR
+  auth_pattern: pattern_3
+  primary_key: id
+  has_attachments: true
+
+event_templates:
+  endpoint: "/services/events/v1/event_templates"
+  api_type: FULL
+  auth_pattern: pattern_3
+  primary_key: id
+
+event_worksheets:
+  endpoint: "/services/events/v1/events/{event_id}/worksheets"
+  api_type: INCR_GET_ID
+  dependency_object: events
+  parent_param_key: event_id
+  auth_pattern: pattern_3
+  primary_key: id
+  has_attachments: true
+
+event_bids:
+  endpoint: "/services/events/v1/events/{event_id}/bids"
+  api_type: INCR_GET_ID
+  dependency_object: events
+  parent_param_key: event_id
+  auth_pattern: pattern_3
+  primary_key: id
+  has_attachments: true
+
+event_worksheets_list_line_items:
+  endpoint: "/services/events/v1/events/{event_id}/worksheets/{worksheet_id}/line_items"
+  api_type: INCR_GET_ID
+  dependency_object: event_worksheets
+  parent_param_key: event_id, worksheet_id
+  auth_pattern: pattern_3
+  primary_key: id
+  has_attachments: true
+
+bid_line_items:
+  endpoint: "/services/events/v1/bids/{bids_id}/bid_line_items"
+  api_type: INCR_GET_ID
+  dependency_object: event_bids
+  parent_param_key: bids_id
+  auth_pattern: pattern_3
+  primary_key: id
+  has_attachments: true
+
+awards:
+  endpoint: "/services/awards/v1/awards"
+  api_type: INCR
+  auth_pattern: pattern_3
+  primary_key: id
+  has_attachments: true
+
+awards_line_items:
+  endpoint: "/services/awards/v1/awards/{awards_id}/award_line_items"
+  api_type: INCR_GET_ID
+  dependency_object: awards
+  parent_param_key: awards_id
+  auth_pattern: pattern_3
+  primary_key: id
+  has_attachments: true
+
+spend_categories:
+  endpoint: "/services/spend_categories/v1/spend_categories"
+  api_type: FULL
+  auth_pattern: pattern_3
+  primary_key: id
+  has_attachments: true
+
+supplier_companies:
+  endpoint: "/services/suppliers/v1/supplier_companies"
+  api_type: INCR
+  auth_pattern: pattern_3
+  primary_key: id
+  has_attachments: true
+
+supplier_contacts:
+  endpoint: "/services/suppliers/v1/supplier_companies/{company_id}/supplier_contacts"
+  api_type: INCR_GET_ID
+  dependency_object: supplier_companies
+  parent_param_key: company_id
+  auth_pattern: pattern_3
+  primary_key: id
+  has_attachments: true
+
+supplier_classifications:
+  endpoint: "/services/suppliers/v1/supplier_classifications"
+  api_type: FULL
+  auth_pattern: pattern_3
+  primary_key: id
+  has_attachments: true
+
+supplier_company_segmentations:
+  endpoint: "/services/suppliers/v1/supplier_company_segmentations"
+  api_type: FULL
+  auth_pattern: pattern_3
+  primary_key: id
+  has_attachments: true
+
+supplier_company_risks:
+  endpoint: "/services/suppliers/v1/supplier_company_risks"
+  api_type: FULL
+  auth_pattern: pattern_3
+  primary_key: id
+  has_attachments: true
+
+supplier_company_segmentation_statuses:
+  endpoint: "/services/suppliers/v1/supplier_company_segmentation_statuses"
+  api_type: FULL
+  auth_pattern: pattern_3
+  primary_key: id
+  has_attachments: true
+
+supplier_categories:
+  endpoint: "/services/suppliers/v1/supplier_categories"
+  api_type: FULL
+  auth_pattern: pattern_3
+  primary_key: id
+  has_attachments: true
+
+supplier_groups:
+  endpoint: "/services/suppliers/v1/supplier_groups"
+  api_type: FULL
+  auth_pattern: pattern_3
+  primary_key: id
+  has_attachments: true
+
+contact_types:
+  endpoint: "/services/suppliers/v1/contact_types"
+  api_type: FULL
+  auth_pattern: pattern_3
+  primary_key: id
+
+suppliers:
+  endpoint: "/suppliers"
+  api_type: FULL
+  auth_pattern: pattern_1
+  primary_key: id
+  has_attachments: true
+
+# --- SCIM v2 Protocol (Pattern 2) ---
+users:
+  endpoint: "/scim/v2/Users"
+  api_type: INCR
+  auth_pattern: pattern_2
+  primary_key: id
+  has_attachments: true
+
+# --- Report Entries (Pattern 1) ---
+contract_milestone_reports:
+  endpoint: "/contract_milestone_reports/entries"
+  api_type: FULL
+  auth_pattern: pattern_1
+  primary_key: id
+  has_attachments: true
+
+contract_reports:
+  endpoint: "/contract_reports/entries"
+  api_type: FULL
+  auth_pattern: pattern_1
+  primary_key: id
+  has_attachments: true
+
+event_reports:
+  endpoint: "/event_reports/entries"
+  api_type: FULL
+  auth_pattern: pattern_1
+  primary_key: id
+  has_attachments: true
+
+performance_review_answer_reports:
+  endpoint: "/performance_review_answer_reports/entries"
+  api_type: FULL
+  auth_pattern: pattern_1
+  primary_key: id
+  has_attachments: true
+
+performance_review_reports:
+  endpoint: "/performance_review_reports/entries"
+  api_type: FULL
+  auth_pattern: pattern_1
+  primary_key: id
+  has_attachments: true
+
+project_milestone_reports:
+  endpoint: "/project_milestone_reports/entries"
+  api_type: FULL
+  auth_pattern: pattern_1
+  primary_key: id
+  has_attachments: true
+
+project_reports:
+  endpoint: "/project_reports/entries"
+  api_type: FULL
+  auth_pattern: pattern_1
+  primary_key: id
+  has_attachments: true
+
+savings_reports:
+  endpoint: "/savings_reports/entries"
+  api_type: FULL
+  auth_pattern: pattern_1
+  primary_key: id
+  has_attachments: true
+
+supplier_reports:
+  endpoint: "/supplier_reports/entries"
+  api_type: FULL
+  auth_pattern: pattern_1
+  primary_key: id
+  has_attachments: true
+
+supplier_review_reports:
+  endpoint: "/supplier_review_reports/entries"
+  api_type: FULL
+  auth_pattern: pattern_1
+  primary_key: id
+  has_attachments: true

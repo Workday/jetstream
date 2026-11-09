@@ -1,0 +1,39 @@
+# Example Databricks Job parameters — Development (shared dev catalog)
+#
+# Use once the shared Jetstream metadata catalog exists in dev.
+# Metadata lands in metadata_dev.jetstream alongside
+# other connector instances.
+
+parameters:
+  # Platform routing
+  environment: dev
+  instance_name: juniper_mist
+  destination_catalog: raw_dev
+  destination_schema: juniper_mist
+  metadata_catalog: ""                # resolved to metadata_dev
+  metadata_schema: jetstream          # shared jetstream schema
+
+  # Auth + org
+  secret_scope: jetstream_juniper_mist
+  juniper_mist_org_id: "<your-org-uuid>"
+  juniper_mist_base_url: "https://api.mist.com/api/v1"
+
+  # SLA / ownership
+  sla_target_minutes: "1440"
+  owner_team: data-eng
+
+  # HTTP
+  rate_limit_qps: "5"
+  timeout_seconds: "60"
+  retry_max_attempts: "5"
+
+  # Source
+  lookback_days: "7"
+  fan_out_max_workers: "8"
+  site_filter: ""
+  enabled_objects: ""
+
+  # Per-run
+  mode: run
+  objects: ""
+  # trigger_type is auto-detected: PERIODIC→scheduled, ONE_TIME→api, MANUAL→manual

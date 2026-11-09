@@ -1,0 +1,166 @@
+# Jetstream Eptura connector — parameter schema.
+#
+# Compiled into connector_manifest.config_schema on first run.
+# Per-instance values are set through Databricks Job parameters.
+
+parameters:
+  # ---------------------------------------------------------------------
+  # Platform routing
+  # ---------------------------------------------------------------------
+
+  - name: environment
+    type: string
+    required: true
+    enum: [dev, prod]
+    description: >-
+      Which Jetstream metadata catalog this instance reports to.
+      dev  -> metadata_dev
+      prod -> metadata_prod
+
+  - name: instance_name
+    type: string
+    required: true
+    description: >-
+      Human-readable name for this deployment, unique within the metadata
+      catalog. Example: eptura.
+
+  - name: destination_catalog
+    type: string
+    required: true
+    description: Unity Catalog where raw Eptura tables are written (e.g. raw_dev).
+
+  - name: destination_schema
+    type: string
+    required: true
+    description: Schema under destination_catalog, typically 'eptura'.
+
+  - name: metadata_catalog
+    type: string
+    required: false
+    default: ""
+    description: >-
+      Catalog for Jetstream control-plane tables. Empty uses the spec default.
+      Override only in dev sandbox phase.
+
+  - name: metadata_schema
+    type: string
+    required: false
+    default: jetstream
+    description: >-
+      Schema for control-plane tables. Default 'jetstream'. Developers MUST
+      override to 'jetstream_eptura' in sandbox per spec §3.2.
+
+  - name: sla_target_minutes
+    type: integer
+    required: false
+    default: 1440
+    description: Expected maximum minutes between successful runs.
+
+  - name: owner_team
+    type: string
+    required: false
+    default: ""
+    description: Team that owns this instance.
+
+  # ---------------------------------------------------------------------
+  # Eptura iOffice API — credential refs only (values in secret scope)
+  # ---------------------------------------------------------------------
+
+  - name: secret_scope
+    type: string
+    required: true
+    description: >-
+      Databricks secret scope for this instance. Expected keys:
+        eptura_host, eptura_username, eptura_password, eptura_client_id
+
+  - name: api_base_path
+    type: string
+    required: false
+    default: /external/api/rest/v2
+    description: REST API path prefix under the site host.
+
+  - name: redirect_uri
+    type: string
+    required: true
+    description: >-
+      Registered OAuth redirect URI for the Eptura client.
+      Example: https://your-tenant.iofficeconnect.com/
+
+  - name: oauth_scope
+    type: string
+    required: false
+    default: email
+    description: OAuth scope sent during the two-step auth flow.
+
+  - name: page_size
+    type: integer
+    required: false
+    default: 1000
+    description: Records per page for limit/startAt pagination.
+
+  - name: rate_limit_qps
+    type: number
+    required: false
+    default: 10
+    description: Max requests/second client-side throttle.
+
+  - name: timeout_seconds
+    type: integer
+    required: false
+    default: 60
+    description: Per-HTTP-request timeout in seconds.
+
+  - name: retry_max_attempts
+    type: integer
+    required: false
+    default: 5
+    description: Max retries on 429/5xx before failing the request.
+
+  # ---------------------------------------------------------------------
+  # Write behaviour
+  # ---------------------------------------------------------------------
+
+  - name: tombstone_guard_pct
+    type: number
+    required: false
+    default: 20
+    description: >-
+      Safety limit on soft deletes. If a snapshot is missing more than this
+      percentage of the rows currently live in the destination table, the
+      entity fails instead of tombstoning them — a partial API response looks
+      identical to a genuine bulk deletion. Raise it when a large drop is
+      expected.
+
+  # ---------------------------------------------------------------------
+  # Entity selection (subset of the src/api_objects.py catalog)
+  # ---------------------------------------------------------------------
+
+  - name: enabled_objects
+    type: string
+    required: false
+    default: ""
+    description: >-
+      Comma-separated list of entity names to sync. Empty means all five:
+      rooms, buildings, neighborhoods, floors, users.
+
+  # ---------------------------------------------------------------------
+  # Per-run overrides
+  #
+  # Declared here so the manifest documents and validates them, but marked
+  # scope: run so they are stripped before the values are written to
+  # connector_instance.source_config. A one-off re-sync must not leave the
+  # instance looking permanently reconfigured.
+  # ---------------------------------------------------------------------
+
+  - name: objects
+    type: string
+    scope: run
+    required: false
+    default: ""
+    description: >-
+      Comma-separated subset of enabled_objects to sync on this run only.
+      Empty means the full enabled plan. Naming an entity that is not enabled
+      on the instance fails the run rather than silently syncing it.
+
+  # trigger_type is auto-detected from the Databricks job context tags
+  # (PERIODIC→scheduled, ONE_TIME→api, MANUAL→manual). No widget needed.

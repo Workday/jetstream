@@ -1,0 +1,38 @@
+# Example Databricks Job parameters — Production
+#
+# Metadata lands in metadata_prod.jetstream.
+# Override of metadata_catalog or metadata_schema is REJECTED in prod.
+
+parameters:
+  # Platform routing
+  environment: prod
+  instance_name: juniper_mist
+  destination_catalog: raw_prod
+  destination_schema: juniper_mist
+  metadata_catalog: ""                # resolved to metadata_prod
+  metadata_schema: jetstream          # shared jetstream schema — override rejected in prod
+
+  # Auth + org
+  secret_scope: jetstream_juniper_mist
+  juniper_mist_org_id: "<your-org-uuid>"
+  juniper_mist_base_url: "https://api.mist.com/api/v1"
+
+  # SLA / ownership
+  sla_target_minutes: "1440"
+  owner_team: platform
+
+  # HTTP — conservative defaults for production
+  rate_limit_qps: "3"
+  timeout_seconds: "90"
+  retry_max_attempts: "5"
+
+  # Source
+  lookback_days: "30"                 # Mist max retention
+  fan_out_max_workers: "8"
+  site_filter: ""
+  enabled_objects: ""
+
+  # Per-run
+  mode: run
+  objects: ""
+  # trigger_type is auto-detected: PERIODIC→scheduled, ONE_TIME→api, MANUAL→manual

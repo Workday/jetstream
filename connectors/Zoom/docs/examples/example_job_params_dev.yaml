@@ -1,0 +1,51 @@
+# PHASE 2 — Actual dev. Pipeline is working; graduate to the shared control
+# plane so cross-connector reporting includes this instance, and write to
+# the real destination schema so downstream teams can validate against it.
+#
+# Control-plane rows land in:    metadata_dev.jetstream_zoom.*
+# Destination raw tables land in: raw_dev.zoom.<name>
+#
+# When end-to-end tested here, flip environment=prod and switch destination
+# to raw_prod (see example_job_params_prod.yaml).
+
+# ---------------------------------------------------------------------
+# Platform routing
+# ---------------------------------------------------------------------
+environment: dev
+instance_name: zoom
+metadata_catalog: metadata_dev
+metadata_schema: jetstream_zoom
+destination_catalog: raw_dev
+destination_schema: zoom
+secret_scope: jetstream_zoom
+owner_team: data-platform
+sla_target_minutes: "1440"
+
+# ---------------------------------------------------------------------
+# Zoom API configuration
+# ---------------------------------------------------------------------
+zoom_base_url: "https://api.zoom.us/v2"
+zoom_token_url: "https://zoom.us/oauth/token"
+rate_limit_qps: "10"
+timeout_seconds: "60"
+retry_max_attempts: "5"
+
+# ---------------------------------------------------------------------
+# Object selection
+# ---------------------------------------------------------------------
+# When mode=run, the job syncs all objects listed in enabled_objects and
+# optional_objects_enabled. The 'objects' parameter is ignored.
+#
+# When mode=full_resync, the job runs a full resync of ONLY the tables
+# listed in 'objects', ignoring enabled_objects and optional_objects_enabled.
+enabled_objects: "users,groups,rooms,room_locations,room_devices"
+optional_objects_enabled: "dashboard_meetings,dashboard_meeting_participants"
+objects: ""                                  # used only with mode=full_resync
+
+# ---------------------------------------------------------------------
+# Execution control
+# ---------------------------------------------------------------------
+# mode=run          : normal incremental sync (uses enabled_objects + optional_objects_enabled)
+# mode=full_resync  : full reload of tables listed in 'objects' param only
+mode: run
+trigger_type: scheduled

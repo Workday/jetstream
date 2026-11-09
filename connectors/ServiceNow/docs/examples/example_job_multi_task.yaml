@@ -1,0 +1,89 @@
+# Illustrative multi-task job. Copy each base_parameters block into a
+# Databricks notebook task pointed at notebook/01_run.py.
+#
+# max_concurrent_runs: 1
+#
+# bootstrap_setup runs first. Every other task depends on it and sets
+# skip_bootstrap: "true". enabled_objects is the ServiceNow table name on
+# every slice of that table. Task keys stay unique.
+
+shared_parameters: &shared
+  environment: dev
+  instance_name: servicenow
+  destination_catalog: raw_dev
+  destination_schema: servicenow
+  metadata_catalog: metadata_dev
+  metadata_schema: jetstream_servicenow
+  secret_scope: jetstream_servicenow
+  attachment_volume_base: /Volumes/raw_dev/servicenow/attachments
+  owner_team: data-platform
+  sla_target_minutes: "1440"
+  page_size: "10000"
+  lookback_minutes: "15"
+  retry_max_attempts: "5"
+  trigger_type: scheduled
+  primary_key: sys_id
+  watermark_column: sys_updated_on
+
+tasks:
+  - task_key: bootstrap_setup
+    notebook_path: notebook/01_run.py
+    base_parameters:
+      <<: *shared
+      enabled_objects: incident
+      sync_target: base
+      mode: bootstrap_only
+      skip_bootstrap: "false"
+
+  - task_key: incident
+    depends_on: [bootstrap_setup]
+    notebook_path: notebook/01_run.py
+    base_parameters:
+      <<: *shared
+      enabled_objects: incident
+      sync_target: base
+      mode: run
+      skip_bootstrap: "true"
+
+  - task_key: incident_attachments
+    depends_on: [bootstrap_setup]
+    notebook_path: notebook/01_run.py
+    base_parameters:
+      <<: *shared
+      enabled_objects: incident
+      sync_target: attachments
+      download_attachments: "true"
+      attachment_meta_table: incident_attachments
+      mode: run
+      skip_bootstrap: "true"
+
+  - task_key: incident_journals
+    depends_on: [bootstrap_setup]
+    notebook_path: notebook/01_run.py
+    base_parameters:
+      <<: *shared
+      enabled_objects: incident
+      sync_target: journals
+      journals_meta_table: incident_journals
+      mode: run
+      skip_bootstrap: "true"
+
+  - task_key: change_request
+    depends_on: [bootstrap_setup]
+    notebook_path: notebook/01_run.py
+    base_parameters:
+      <<: *shared
+      enabled_objects: change_request
+      sync_target: base
+      mode: run
+      skip_bootstrap: "true"
+
+  - task_key: problem
+    depends_on: [bootstrap_setup]
+    notebook_path: notebook/01_run.py
+    base_parameters:
+      <<: *shared
+      enabled_objects: problem
+      sync_target: base
+      mode: run
+      skip_bootstrap: "true"

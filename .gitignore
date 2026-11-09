@@ -1,0 +1,6 @@
+.DS_Store
+__pycache__/
+*.pyc
+
+# Local playbook for connector owners. Not part of the published repo.
+connectors/Zoom/docs/open-source-connector-cleanup.md

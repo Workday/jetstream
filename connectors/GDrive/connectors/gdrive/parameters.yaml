@@ -1,0 +1,331 @@
+# Jetstream Google Drive connector — parameter schema.
+#
+# Spec §7 "Parameter Specification Convention": this file is the single
+# source of truth for what the Google Drive connector's source_config accepts.
+# At first run, this file is compiled into a JSON Schema and inserted as
+# jetstream_metadata_<env>.jetstream.connector_manifest.config_schema.
+#
+# Per-instance values are set through Databricks Job UI parameters and
+# read via dbutils.widgets.getAll() — NOT stored anywhere in this repo.
+# See docs/examples/ for reference example parameter sets.
+
+parameters:
+  # ---------------------------------------------------------------------
+  # Platform routing
+  # ---------------------------------------------------------------------
+
+  - name: mode
+    type: string
+    required: false
+    default: run
+    enum: [run, full_resync]
+    description: >-
+      Run mode: 'run' = incremental (uses cursor), 'full_resync' = reset
+      cursors and re-download all files from Drive.
+
+  - name: environment
+    type: string
+    required: true
+    enum: [dev, prod]
+    description: >-
+      Which Jetstream metadata catalog this instance reports to.
+      dev  -> jetstream_metadata_dev
+      prod -> jetstream_metadata_prod
+      Also written to connector_instance.environment.
+
+  - name: instance_name
+    type: string
+    required: true
+    description: >-
+      Human-readable name for this deployment, unique within the metadata
+      catalog. Example: gdrive.
+
+  - name: destination_catalog
+    type: string
+    required: true
+    description: >-
+      Unity Catalog where the raw Google Drive metadata table is written
+      (e.g. raw_dev, raw_prod).
+
+  - name: destination_schema
+    type: string
+    required: true
+    description: Schema under destination_catalog, typically 'gdrive' or a team-specific schema.
+
+  - name: metadata_catalog
+    type: string
+    required: false
+    default: ""
+    description: >-
+      Which catalog holds the Jetstream control-plane tables. Empty means the
+      spec default (jetstream_metadata_dev for env=dev, jetstream_metadata_prod
+      for env=prod). Override only in dev sandbox phase (e.g. raw_dev when
+      the shared metadata catalog is not yet provisioned). Overrides are rejected
+      in prod.
+
+  - name: metadata_schema
+    type: string
+    required: false
+    default: jetstream
+    description: >-
+      Which schema under metadata_catalog this instance reports to. Default
+      'jetstream' is the shared control-plane schema every prod-ready connector
+      uses. Developers iterating on a new connector type MUST override this to
+      'jetstream_gdrive' (or jetstream_<connector_type>) per spec §3.2, to keep
+      test/throwaway rows out of the shared schema. Overrides permitted only
+      when environment='dev'; the value must still start with 'jetstream'.
+
+  - name: sla_target_minutes
+    type: integer
+    required: false
+    default: 1440
+    description: Expected maximum minutes between successful runs; used by the connector_health view.
+
+  - name: owner_team
+    type: string
+    required: false
+    default: ""
+    description: Team that owns this instance (informational, written to connector_instance.owner_team).
+
+  - name: tags
+    type: map
+    required: false
+    default: "{}"
+    description: >-
+      Key-value map of tags for this connector instance (written to
+      connector_instance.tags as MAP<STRING, STRING>). Passed as a JSON
+      object string, e.g. '{"team": "analytics", "domain": "finance"}'.
+
+  - name: databricks_job_id
+    type: string
+    required: false
+    default: ""
+    description: >-
+      Databricks Job ID. Set to the dynamic reference {{job_id}} so it
+      resolves automatically at runtime. Written to
+      connector_instance.databricks_job_id and connector_run.databricks_job_id.
+
+  - name: databricks_job_run_id
+    type: string
+    required: false
+    default: ""
+    description: >-
+      Databricks Job Run ID. Set to the dynamic reference {{run_id}} so it
+      resolves automatically at runtime. Used as the idempotency_key in
+      connector_run (prevents duplicate rows on retry) and written to
+      connector_run.databricks_job_run_id.
+
+  - name: databricks_workspace_id
+    type: string
+    required: false
+    default: ""
+    description: >-
+      Databricks workspace ID (numeric org ID, e.g. '1234567890123456').
+      Set once when creating the job. Written to
+      connector_run.databricks_workspace_id.
+
+  # ---------------------------------------------------------------------
+  # Google Drive OAuth / API — no credential *values* ever appear here
+  # ---------------------------------------------------------------------
+
+  - name: secret_scope
+    type: string
+    required: true
+    description: >-
+      Databricks secret scope that holds this instance's Google Drive OAuth
+      credentials. Expected keys inside the scope:
+       client_id, client_secret, refresh_token.
+      Values are NEVER written to the control plane — only the scope name.
+
+  - name: drive_api_base_url
+    type: string
+    required: false
+    default: https://www.googleapis.com/drive/v3
+    description: Google Drive REST API v3 base URL. Change only for isolated tenants.
+
+  - name: token_uri
+    type: string
+    required: false
+    default: https://oauth2.googleapis.com/token
+    description: Google OAuth token endpoint used for the refresh-token grant.
+
+  - name: rate_limit_qps
+    type: number
+    required: false
+    default: 10
+    description: Max requests/second client-side throttle for the Drive API.
+
+  - name: timeout_seconds
+    type: integer
+    required: false
+    default: 60
+    description: Per-HTTP-request timeout in seconds.
+
+  - name: retry_max_attempts
+    type: integer
+    required: false
+    default: 5
+    description: Max retries on 429/5xx before failing the request.
+
+  # ---------------------------------------------------------------------
+  # What to sync from Google Drive
+  # ---------------------------------------------------------------------
+
+  - name: folder_ids
+    type: string
+    required: false
+    default: ""
+    description: >-
+      Comma-separated Google Drive FOLDER IDs to sync (recursively).
+      Each ID MUST be a Drive folder; non-folder IDs will cause the run
+      to fail with a clear error. Empty means "all files/folders accessible
+      to the OAuth identity".
+
+  - name: file_ids
+    type: string
+    required: false
+    default: ""
+    description: >-
+      Comma-separated Google Drive FILE IDs to sync (individual files like
+      Google Sheets, Slides, or uploaded documents). Each ID MUST be a
+      file (not a folder); folder IDs will cause the run to fail. These
+      files are downloaded directly to the volume root (with date partition
+      if enabled). Use this for specific files that are NOT inside a
+      synced folder.
+
+  - name: enabled_objects
+    type: string
+    required: false
+    default: ""
+    description: >-
+      Comma-separated list of object names to sync. Known objects:
+      files_metadata (Drive file/folder metadata -> Iceberg table),
+      files (whole file bytes -> UC Volume or S3 prefix). Empty means all.
+
+  - name: table_mappings
+    type: array
+    required: false
+    default: "[]"
+    description: >-
+      JSON array of structured Iceberg table mapping objects. Each entry maps
+      a Google Drive source (folder or file) to a target Iceberg table in
+      destination_catalog.destination_schema. The connector parses tabular
+      files (.csv, .xlsx, Google Sheets) and writes them directly to the
+      specified table, skipping non-structured formats.
+
+      Each entry is an object with keys:
+        - source_type (required): 'folder' or 'file'.
+        - target_table (required): Destination table name (catalog/schema
+          come from destination_catalog/destination_schema).
+        - source_subfolder (required): Relative path within the daily Volume
+          directory that Stage 2 reads from. For folder mode, this is the
+          subfolder path. For file mode, this is the path to the specific
+          file. Example: "Team_A/Polls".
+        - supported_formats (optional): Array of formats to accept.
+          Default: ["csv", "xlsx", "xls", "google_sheets"].
+        - recursive (optional): For folder mode, whether to recurse into
+          subfolders. Default: true.
+        - write_mode (optional): How Stage 2 writes to the Iceberg table.
+          'overwrite' (default) = truncate + replace the entire table.
+          'append' = add rows to the existing table (creates on first run).
+        - description (optional): Human-readable label.
+
+      Example:
+        [
+          {"source_type": "folder",
+           "target_table": "team_a_polls",
+           "source_subfolder": "Team_A/Polls",
+           "description": "Polls subfolder"},
+          {"source_type": "folder",
+           "target_table": "team_a_qna",
+           "source_subfolder": "Team_A/QnA",
+           "description": "Q&A subfolder"},
+          {"source_type": "file",
+           "target_table": "sample_insights",
+           "source_subfolder": "Sample_Insights.xlsx"}
+        ]
+
+  # ---------------------------------------------------------------------
+  # File-copy destination (used only by the `files` object)
+  # ---------------------------------------------------------------------
+
+  - name: preserve_hierarchy
+    type: boolean
+    required: false
+    default: true
+    description: >-
+      When true (default), Stage 1 replicates the Google Drive folder
+      structure in the destination volume/S3 path.  When false, all files
+      are flattened into a single directory (file names are prefixed with
+      a hash to avoid collisions).
+
+  - name: date_partitioned
+    type: boolean
+    required: false
+    default: true
+    description: >-
+      When true (default), Stage 1 inserts a /YYYY-MM-DD/ directory under
+      the volume path so each run lands in an isolated daily partition.
+      Example: /Volumes/raw_dev/gdrive/files/2026-08-28/...
+      When false, files land directly under the volume path.
+
+  - name: file_destination_type
+    type: string
+    required: false
+    default: volume
+    enum: [volume, s3]
+    description: >-
+      Where the `files` object lands whole file bytes: a Unity Catalog
+      Volume ('volume') or an S3 prefix ('s3'). Not used by files_metadata.
+
+  - name: volume_path
+    type: string
+    required: false
+    default: ""
+    description: >-
+      UC Volume path the `files` object writes to when file_destination_type=volume,
+      e.g. /Volumes/raw_dev/gdrive/files. Recorded as the destination_table
+      for the file-copy object (spec §6.10).
+
+  - name: s3_bucket
+    type: string
+    required: false
+    default: ""
+    description: S3 bucket for the `files` object when file_destination_type=s3.
+
+  - name: s3_prefix
+    type: string
+    required: false
+    default: ""
+    description: S3 key prefix under s3_bucket when file_destination_type=s3.
+
+  - name: s3_role_arn
+    type: string
+    required: false
+    default: ""
+    description: >-
+      IAM role ARN assumed via STS for S3 writes when file_destination_type=s3.
+      Static access keys are not supported.
+
+  - name: s3_role_session_name
+    type: string
+    required: false
+    default: jetstream-gdrive
+    description: STS role session name used when assuming s3_role_arn.
+
+  - name: file_export_format
+    type: string
+    required: false
+    default: ""
+    description: >-
+      Preferred export extension for Google-native files (e.g. csv, pdf, xlsx,
+      docx). Empty uses the per-type default (Sheets->xlsx, Docs->docx,
+      Slides->pptx, Drawings->png). Binary files are always downloaded as-is.
+
+  - name: max_file_bytes
+    type: integer
+    required: false
+    default: 0
+    description: >-
+      Skip any file larger than this many bytes in the `files` object
+      (logged as skipped). 0 means no size limit.

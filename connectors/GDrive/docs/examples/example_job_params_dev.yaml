@@ -1,0 +1,94 @@
+# PHASE 2 — Actual dev. Pipeline is working; graduate to the shared control
+# plane so cross-connector reporting includes this instance, and write to
+# the real destination schema so downstream teams can validate against it.
+#
+# Control-plane rows land in:      jetstream_metadata_dev.jetstream_gdrive.*
+# Metadata table lands in:         raw_dev.gdrive.files_metadata
+# Raw file bytes land in:          /Volumes/raw_dev/gdrive/files/{YYYY-MM-DD}/...
+# Stage 2 structured tables:       raw_dev.gdrive.<target_table>
+#
+# When end-to-end tested here, flip environment=prod and switch destination
+# to raw_prod (see example_job_params_prod.yaml).
+#
+# All values are passed as Databricks Job parameters (strings); the connector
+# coerces them to the types declared in connectors/gdrive/parameters.yaml.
+
+# ---------------------------------------------------------------------
+# Platform routing
+# ---------------------------------------------------------------------
+environment: dev
+instance_name: gdrive
+metadata_catalog: jetstream_metadata_dev
+metadata_schema: jetstream_gdrive
+destination_catalog: raw_dev
+destination_schema: gdrive
+secret_scope: jetstream_gdrive            # keys: client_id, client_secret, refresh_token
+owner_team: data-platform
+sla_target_minutes: "1440"
+tags: '{"team": "data-platform", "source": "gdrive"}'
+
+# ---------------------------------------------------------------------
+# Databricks runtime context (dynamic value references)
+# ---------------------------------------------------------------------
+databricks_job_id: "{{job_id}}"
+databricks_job_run_id: "{{run_id}}"     # used as the connector_run idempotency key
+databricks_workspace_id: "<your-workspace-id>"
+
+# ---------------------------------------------------------------------
+# Google Drive API configuration
+# ---------------------------------------------------------------------
+drive_api_base_url: "https://www.googleapis.com/drive/v3"
+token_uri: "https://oauth2.googleapis.com/token"
+rate_limit_qps: "10"
+timeout_seconds: "60"
+retry_max_attempts: "5"
+
+# ---------------------------------------------------------------------
+# What to sync
+# ---------------------------------------------------------------------
+# folder_ids : Drive FOLDER IDs, synced recursively. Empty = everything the
+#              OAuth identity can access (avoid in practice).
+# file_ids   : individual Drive FILE IDs not inside a synced folder.
+folder_ids: "<folder_id_a>,<folder_id_b>"
+file_ids: "<file_id_1>"
+
+# ---------------------------------------------------------------------
+# Object selection
+# ---------------------------------------------------------------------
+# files_metadata : Drive file/folder metadata -> raw_dev.gdrive.files_metadata (MERGE on file_id)
+# files          : whole file bytes -> UC Volume (or S3)
+# Empty means all objects.
+enabled_objects: "files_metadata,files"
+
+# ---------------------------------------------------------------------
+# File-copy destination (used by the `files` object)
+# ---------------------------------------------------------------------
+file_destination_type: volume              # volume | s3
+volume_path: "/Volumes/raw_dev/gdrive/files"
+preserve_hierarchy: "true"                 # replicate Drive folder structure
+date_partitioned: "true"                   # insert /YYYY-MM-DD/ per run
+file_export_format: ""                     # empty = Sheets->xlsx, Docs->docx, Slides->pptx
+max_file_bytes: "0"                        # 0 = no size limit
+
+# ---------------------------------------------------------------------
+# Stage 2 — structured files (.csv/.xlsx/Sheets) -> Iceberg tables
+# ---------------------------------------------------------------------
+# source_subfolder is relative to the daily Volume directory.
+# write_mode: overwrite (default, truncate + replace) | append
+table_mappings: >-
+  [
+    {"source_type": "folder", "target_table": "team_a_polls",
+     "source_subfolder": "Team_A/Polls", "description": "Polls"},
+    {"source_type": "folder", "target_table": "team_a_surveys",
+     "source_subfolder": "Team_A/Surveys", "write_mode": "append",
+     "description": "Surveys (append history)"},
+    {"source_type": "file", "target_table": "sample_insights",
+     "source_subfolder": "Sample Insights.xlsx", "description": "Single file"}
+  ]
+
+# ---------------------------------------------------------------------
+# Execution control
+# ---------------------------------------------------------------------
+# mode=run          : incremental sync on the modifiedTime cursor
+# mode=full_resync  : reset cursors, re-download all files, rebuild Stage 2 tables
+mode: run

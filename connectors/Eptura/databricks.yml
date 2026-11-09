@@ -1,0 +1,219 @@
+# Databricks Asset Bundle for jetstream-eptura-connector.
+#
+# Deploys this repo to the workspace and creates the sync job with every
+# parameter pre-wired, so nothing is hand-edited in the Jobs UI.
+#
+#   databricks bundle validate -t sandbox -p <profile>
+#   databricks bundle deploy   -t sandbox -p <profile>
+#   databricks bundle run eptura_probe -t sandbox -p <profile>
+#
+# Targets follow the README: sandbox writes to its own control-plane schema,
+# dev uses the shared `jetstream` one. Prod lives in a separate workspace and
+# is not defined here — see the note at the bottom.
+#
+# The workspace host comes from the CLI profile (-p). To pin it per target
+# instead, add a `workspace: { host: https://... }` block to that target.
+#
+# Compute is set per target rather than on the job, because the two cases
+# differ: sandbox attaches to a long-lived cluster so an edit-and-rerun cycle
+# costs seconds instead of the ~8 minutes a job cluster takes to provision,
+# while dev and prod get a fresh job cluster per run. Serverless is not an
+# option — it cannot resolve the Eptura host.
+
+bundle:
+  name: jetstream-eptura-connector
+
+variables:
+  environment:
+    description: dev or prod — selects the control-plane catalog.
+  instance_name:
+    description: Unique name for this deployment within the metadata catalog.
+  metadata_catalog:
+    description: Control-plane catalog. Empty uses the spec default for the environment.
+    default: ""
+  metadata_schema:
+    description: Control-plane schema. Sandbox must use jetstream_eptura.
+    default: jetstream
+  destination_catalog:
+    description: Catalog for the raw Eptura tables.
+  destination_schema:
+    description: Schema for the raw Eptura tables.
+    default: eptura
+  secret_scope:
+    description: Secret scope holding eptura_host, eptura_username, eptura_password, eptura_client_id.
+    # Per-connector scope, matching the existing jetstream_zoom convention, so
+    # this connector's credentials can be granted and rotated on their own.
+    default: jetstream_eptura
+  enabled_objects:
+    description: CSV of entities to sync. Empty means all five.
+    default: ""
+  tombstone_guard_pct:
+    description: Fail an entity rather than soft-delete more than this share of its live rows.
+    default: "20"
+  owner_team:
+    description: Team that owns this instance. Informational.
+    default: ""
+  redirect_uri:
+    description: Registered OAuth redirect URI for the Eptura client. Required at runtime.
+    default: ""
+  sla_target_minutes:
+    description: Expected maximum minutes between successful runs.
+    default: "1440"
+  schedule_cron:
+    description: Quartz cron for the scheduled run. Default is 06:00 UTC daily.
+    default: "0 0 6 * * ?"
+
+  existing_cluster_id:
+    description: Long-lived cluster the sandbox target attaches to. Set this for your workspace.
+    default: ""
+
+  # Fill policy_id and node_type_id with values from your workspace. A cluster
+  # policy may pin node type, a security tag, and availability.
+  job_cluster_spec:
+    description: Cluster created per run by the dev and prod targets.
+    type: complex
+    default:
+      spark_version: 18.x-scala2.13
+      node_type_id: r4.xlarge
+      policy_id: ""
+      data_security_mode: SINGLE_USER
+      runtime_engine: STANDARD
+      enable_elastic_disk: true
+      autoscale:
+        min_workers: 1
+        max_workers: 2
+      aws_attributes:
+        availability: SPOT_WITH_FALLBACK
+        first_on_demand: 1
+        spot_bid_price_percent: 100
+        zone_id: auto
+      spark_conf:
+        spark.databricks.acl.needAdminPermissionToViewLogs: "false"
+
+resources:
+  jobs:
+    eptura_sync:
+      name: jetstream-eptura
+      description: Syncs Eptura iOffice entities into the Unity Catalog raw tables.
+      # Overlapping runs would fight over the same MERGE targets.
+      max_concurrent_runs: 1
+
+      # Job-level parameters are available to all tasks via dbutils.widgets.
+      # trigger_type, job_id, run_id, workspace_id are auto-detected from the
+      # Databricks notebook context tags at runtime — no parameters needed.
+      parameters:
+        - name: environment
+          default: ${var.environment}
+        - name: instance_name
+          default: ${var.instance_name}
+        - name: metadata_catalog
+          default: ${var.metadata_catalog}
+        - name: metadata_schema
+          default: ${var.metadata_schema}
+        - name: destination_catalog
+          default: ${var.destination_catalog}
+        - name: destination_schema
+          default: ${var.destination_schema}
+        - name: secret_scope
+          default: ${var.secret_scope}
+        - name: enabled_objects
+          default: ${var.enabled_objects}
+        - name: tombstone_guard_pct
+          default: ${var.tombstone_guard_pct}
+        - name: owner_team
+          default: ${var.owner_team}
+        - name: redirect_uri
+          default: ${var.redirect_uri}
+        - name: sla_target_minutes
+          default: ${var.sla_target_minutes}
+
+      schedule:
+        quartz_cron_expression: ${var.schedule_cron}
+        timezone_id: UTC
+        # Deliberately paused. Unpause once a manual run has been verified.
+        # `mode: development` targets pause schedules regardless.
+        pause_status: PAUSED
+
+      tasks:
+        - task_key: sync
+          notebook_task:
+            notebook_path: ./notebook/01_run.py
+
+    # Connectivity and access probe. Read-only, no schedule — run it on demand
+    # before creating or repointing an instance.
+    eptura_probe:
+      name: jetstream-eptura-probe
+      max_concurrent_runs: 1
+      tasks:
+        - task_key: probe
+          notebook_task:
+            notebook_path: ./notebook/99_connectivity_probe.py
+            base_parameters:
+              secret_scope: ${var.secret_scope}
+              redirect_uri: ${var.redirect_uri}
+              check_incremental: "true"
+              extra_endpoints: ""
+
+targets:
+  # Phase 1 — isolated control plane, shared dev destination.
+  sandbox:
+    mode: development
+    default: true
+    variables:
+      environment: dev
+      instance_name: eptura_sandbox
+      # Empty resolves to metadata_dev, where every connector's
+      # control plane lives. Only the schema is isolated.
+      metadata_catalog: ""
+      metadata_schema: jetstream_eptura
+      destination_catalog: raw_dev
+      destination_schema: eptura
+      # Empty means the full catalog. Narrow this to a CSV such as rooms,users
+      # when iterating, to avoid re-reading everything on each attempt.
+      enabled_objects: ""
+    resources:
+      jobs:
+        eptura_sync:
+          tasks:
+            - task_key: sync
+              existing_cluster_id: ${var.existing_cluster_id}
+        eptura_probe:
+          tasks:
+            - task_key: probe
+              existing_cluster_id: ${var.existing_cluster_id}
+
+  # Phase 2 — shared control plane, dev data.
+  dev:
+    mode: development
+    variables:
+      environment: dev
+      instance_name: eptura
+      metadata_catalog: ""
+      metadata_schema: jetstream
+      destination_catalog: raw_dev
+      destination_schema: eptura
+    resources:
+      jobs:
+        eptura_sync:
+          job_clusters:
+            - job_cluster_key: eptura_cluster
+              new_cluster: ${var.job_cluster_spec}
+          tasks:
+            - task_key: sync
+              job_cluster_key: eptura_cluster
+        eptura_probe:
+          job_clusters:
+            - job_cluster_key: eptura_cluster
+              new_cluster: ${var.job_cluster_spec}
+          tasks:
+            - task_key: probe
+              job_cluster_key: eptura_cluster
+
+  # Phase 3 — production is deliberately absent.
+  #
+  # It belongs to a different workspace with its own cluster policy, security
+  # tag, service principal, secret scope, and catalogs. Every compute value in
+  # this file is a dev-workspace identifier, so a prod target defined here
+  # could not be validated against anything real and would only invite a
+  # deploy wired to the wrong policy and principal. Add it in the production
+  # workspace, where those values are known.
